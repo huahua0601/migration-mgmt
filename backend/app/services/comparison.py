@@ -255,7 +255,7 @@ def _compare_schema_snapshot_vs_db(db: Session, task_id: int, schema: str,
     ]
     cur = tgt_conn.cursor()
     cur.execute("""SELECT sequence_name, min_value, max_value, increment_by, cycle_flag, order_flag, cache_size
-                   FROM all_sequences WHERE sequence_owner=:s ORDER BY sequence_name""", {"s": schema})
+                   FROM all_sequences WHERE sequence_owner=:s AND sequence_name NOT LIKE 'ISEQ$$_%' ORDER BY sequence_name""", {"s": schema})
     tgt_seq = [dict(zip(["sequence_name", "min_value", "max_value", "increment_by", "cycle_flag", "order_flag", "cache_size"], r)) for r in cur]
     cur.close()
     _compare_simple_objects(db, task_id, schema, "SEQUENCE", src_seq, tgt_seq, "sequence_name")
