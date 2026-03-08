@@ -108,7 +108,7 @@ def export_sequences(cur, schema: str) -> list[dict]:
     return fetch_all(cur, """
         SELECT sequence_name, min_value, max_value, increment_by,
                cycle_flag, order_flag, cache_size, last_number
-        FROM all_sequences WHERE sequence_owner = :s ORDER BY sequence_name
+        FROM all_sequences WHERE sequence_owner = :s AND sequence_name NOT LIKE 'ISEQ$$_%' ORDER BY sequence_name
     """, {"s": schema})
 
 
