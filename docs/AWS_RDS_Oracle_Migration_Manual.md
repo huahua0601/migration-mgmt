@@ -167,6 +167,7 @@ aws s3 sync s3://源区-存储桶名/dpump_export/ s3://目标区-存储桶名/d
 --source-profile china-profile \
 --profile global-profile
 ```
+如果目标端和源端网络不通，则需要将源端的数据导出到本地，然后上传到目标端的 S3 存储桶。
 
 ### 第 4 步：目标端 RDS 拉取 S3 文件落盘
 
