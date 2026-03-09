@@ -272,7 +272,7 @@ END;
 
 成功迁移完毕后务必执行以下校验与空间清理。
 
-- [ ] **交付比对**：使用http://localhost:3000对比核心业务下所有目标端与源端所有对象是否一致。
+- [ ] **交付比对**：使用 http://localhost:3000 对比核心业务下所有目标端与源端所有对象是否一致。
 - [ ] **物理清理卸载**：
   在 RDS 内移除遗留下来的 .dmp 大尺寸数据包文件：
   `EXEC UTL_FILE.FREMOVE('DATA_PUMP_DIR', 'export_demo_part1_01.dmp');`
