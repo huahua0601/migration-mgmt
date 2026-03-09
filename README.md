@@ -216,6 +216,9 @@ migration-mgmt/
 ├── export-tool/
 │   ├── export.sh                   # Shell 包装脚本
 │   └── export_tool.py              # 源库导出工具
+├── docs/                           # 项目文档库
+│   ├── AWS_RDS_Oracle_Migration_Manual.md  # AWS RDS Oracle 数据迁移操作手册
+│   └── POC_Time_Analysis.md        # 迁移 POC 时间耗时预估分析
 └── mysql/
     └── init.sql                    # 初始 Schema（已由 Alembic 接管）
 ```
