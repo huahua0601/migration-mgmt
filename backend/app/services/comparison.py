@@ -265,25 +265,66 @@ def _compare_schema_snapshot_vs_db(db: Session, task_id: int, schema: str,
             continue
         _save(db, task_id, schema, "TABLE", tbl, "match")
 
-    # ── Columns ──
+# ── Columns (Optimized for detailed diffing) ──
     src_cols_by_table = _group_by(src_data.get("columns", []), "table_name")
     tgt_cols = _tgt_columns(tgt_conn, schema)
     tgt_cols_by_table = _group_by(tgt_cols, "table_name")
 
     for tbl in sorted(set(src_cols_by_table) | set(tgt_cols_by_table)):
-        sc = src_cols_by_table.get(tbl, [])
-        tc = tgt_cols_by_table.get(tbl, [])
-        normalize = lambda lst: [
-            {k: v for k, v in c.items() if k != "table_name" and k != "data_default" and v is not None}
-            for c in lst
-        ]
-        if normalize(sc) == normalize(tc):
+        sc_raw = src_cols_by_table.get(tbl, [])
+        tc_raw = tgt_cols_by_table.get(tbl, [])
+
+        # 归一化过滤掉不需要对比的干扰项
+        def _normalize_col(c):
+            return {k: v for k, v in c.items() if k not in ("table_name", "data_default") and v is not None}
+
+        sc = [_normalize_col(c) for c in sc_raw]
+        tc = [_normalize_col(c) for c in tc_raw]
+
+        if sc == tc:
             _save(db, task_id, schema, "COLUMN", tbl, "match", f"{len(sc)} cols", f"{len(tc)} cols")
         else:
+            # --- 开始生成极其详细的差异报告 (Diff) ---
+            src_map = {c.get("column_name"): c for c in sc}
+            tgt_map = {c.get("column_name"): c for c in tc}
+            all_col_names = sorted(set(src_map) | set(tgt_map))
+
+            diff_details = {
+                "missing_in_target": [],
+                "missing_in_source": [],
+                "attribute_mismatches": {}
+            }
+
+            for col_name in all_col_names:
+                s_col = src_map.get(col_name)
+                t_col = tgt_map.get(col_name)
+
+                # 1. 找缺失的列
+                if s_col and not t_col:
+                    diff_details["missing_in_target"].append(col_name)
+                elif t_col and not s_col:
+                    diff_details["missing_in_source"].append(col_name)
+                else:
+                    # 2. 列名相同，对比具体属性 (类型, 长度, 精度, 标度, 空值约束, 顺序)
+                    col_diffs = {}
+                    all_attrs = set(s_col) | set(t_col)
+                    for attr in all_attrs:
+                        if attr == "column_name":
+                            continue
+                        s_val = s_col.get(attr)
+                        t_val = t_col.get(attr)
+                        if s_val != t_val:
+                            col_diffs[attr] = {"source": s_val, "target": t_val}
+                    
+                    if col_diffs:
+                        diff_details["attribute_mismatches"][col_name] = col_diffs
+            
+            # 清理空的分类，让 JSON 看起来更清爽
+            diff_details = {k: v for k, v in diff_details.items() if v}
+
             _save(db, task_id, schema, "COLUMN", tbl, "mismatch",
                   f"{len(sc)} cols", f"{len(tc)} cols",
-                  {"source_cols": [c.get("column_name") for c in sc],
-                   "target_cols": [c.get("column_name") for c in tc]})
+                  diff_details)
 
     # ── Constraints ──
     src_con = src_data.get("constraints", [])
