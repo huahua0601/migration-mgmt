@@ -58,11 +58,12 @@ def _tgt_columns(conn, schema: str) -> list[dict]:
 def _tgt_constraints(conn, schema: str) -> list[dict]:
     cur = conn.cursor()
     cur.execute("""
-        SELECT table_name, constraint_name, constraint_type, search_condition, status
+        SELECT table_name, constraint_name, constraint_type, search_condition, r_constraint_name, status, validated
         FROM all_constraints WHERE owner=:s AND constraint_name NOT LIKE 'SYS_%' ORDER BY table_name, constraint_name
     """, {"s": schema})
     result = [{"table_name": r[0], "constraint_name": r[1], "constraint_type": r[2],
-               "search_condition": str(r[3]) if r[3] else None, "status": r[4]} for r in cur]
+               "search_condition": str(r[3]) if r[3] else None, 
+               "r_constraint_name": r[4], "status": r[5], "validated": r[6]} for r in cur]
     cur.close()
     return result
 
