@@ -118,7 +118,6 @@ def _tgt_checksum(conn, schema: str, table: str, limit: int = 1000) -> Optional[
         sql = (
             f'SELECT SUM(ORA_HASH({ora_expr})), COUNT(*) '
             f'FROM (SELECT * FROM "{schema}"."{table}" '
-            f'WHERE ROWNUM <= {limit})'
         )
         cur.execute(sql)
         row = cur.fetchone()

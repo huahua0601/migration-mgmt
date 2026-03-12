@@ -201,7 +201,6 @@ def _single_table_stats(dsn: str, user: str, password: str,
                 sql = (
                     f'SELECT SUM(ORA_HASH({ora_expr})), COUNT(*) '
                     f'FROM (SELECT * FROM "{schema}"."{table}" '
-                    f'WHERE ROWNUM <= {sample_limit})'
                 )
                 cur.execute(sql)
                 row = cur.fetchone()
