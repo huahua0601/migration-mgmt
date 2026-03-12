@@ -139,6 +139,24 @@ def _group_by(items: list[dict], key: str) -> dict[str, list[dict]]:
     return grouped
 
 
+def _normalize_sql_text(text) -> str:
+    """
+    通用 SQL 文本标准化：
+    处理 LOB 读取，并去除 \r 字符，同时去除每一行的行尾空格，
+    防止因换行符（CRLF vs LF）或行尾空格导致的不一致。
+    """
+    if text is None:
+        return ""
+    if hasattr(text, 'read'):
+        try:
+            text = text.read()
+        except:
+            pass
+    if not isinstance(text, str):
+        text = str(text)
+    return "\n".join(line.rstrip() for line in text.replace("\r", "").split("\n")).strip()
+
+
 # ─── Compare: snapshot schema vs live target ───
 
 def _compare_simple_objects(db, task_id, schema, obj_type, src_items, tgt_items, name_key, ignore_keys=None):
@@ -150,10 +168,8 @@ def _compare_simple_objects(db, task_id, schema, obj_type, src_items, tgt_items,
         for k, v in d.items():
             if (skip_name_key and k == name_key) or k in _ignore or v is None:
                 continue
-            if hasattr(v, 'read'):
-                v = v.read()
-            if isinstance(v, str):
-                v = v.strip()
+            if isinstance(v, str) or hasattr(v, 'read'):
+                v = _normalize_sql_text(v)
             out[k] = v
         return out
 
@@ -194,10 +210,8 @@ def _normalize_constraint(c: dict) -> dict:
             continue  # 主键，不作为值参与比较
         if v is None:
             continue
-        if hasattr(v, 'read'):
-            v = v.read()
-        if isinstance(v, str):
-            v = v.strip()
+        if isinstance(v, str) or hasattr(v, 'read'):
+            v = _normalize_sql_text(v)
         if k == "r_constraint_name" and _is_sys_name(v):
             v = "__SYS_NAMED__"
         result[k] = v
@@ -294,8 +308,8 @@ def _compare_schema_snapshot_vs_db(db: Session, task_id: int, schema: str,
     for name in sorted(set(src_views) | set(tgt_views)):
         s, t = src_views.get(name), tgt_views.get(name)
         if s and t:
-            s_text = (s.get("text") or "").strip()
-            t_text = (t.get("text") or "").strip()
+            s_text = _normalize_sql_text(s.get("text"))
+            t_text = _normalize_sql_text(t.get("text"))
             status = "match" if s_text == t_text else "mismatch"
             _save(db, task_id, schema, "VIEW", name, status, s_text[:2000], t_text[:2000])
         elif s:
@@ -331,8 +345,10 @@ def _compare_schema_snapshot_vs_db(db: Session, task_id: int, schema: str,
             else:
                 t = None
             if s is not None and t is not None:
-                status = "match" if s.strip() == t.strip() else "mismatch"
-                _save(db, task_id, schema, obj_type, name, status, s[:2000], t[:2000])
+                s_norm = _normalize_sql_text(s)
+                t_norm = _normalize_sql_text(t)
+                status = "match" if s_norm == t_norm else "mismatch"
+                _save(db, task_id, schema, obj_type, name, status, s_norm[:2000], t_norm[:2000])
             elif s is not None:
                 _save(db, task_id, schema, obj_type, name, "source_only", src_val=s[:2000])
             else:
