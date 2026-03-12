@@ -178,6 +178,62 @@ def _compare_simple_objects(db, task_id, schema, obj_type, src_items, tgt_items,
                   tgt_val=json.dumps(t, default=str)[:2000])
 
 
+def _is_sys_name(name: str) -> bool:
+    """判断是否为 Oracle 系统自动生成的约束名（如 SYS_C0017605）。"""
+    return name is not None and name.upper().startswith("SYS_")
+
+
+def _normalize_constraint(c: dict) -> dict:
+    """
+    标准化约束记录用于比较。
+    对 r_constraint_name 字段：若为系统命名（SYS_*），替换为占位符 '__SYS_NAMED__'，
+    避免迁移后系统约束名变更导致误报 mismatch。
+    """
+    result = {}
+    for k, v in c.items():
+        if k == "constraint_name":
+            continue  # 主键，不作为值参与比较
+        if v is None:
+            continue
+        if hasattr(v, 'read'):
+            v = v.read()
+        if isinstance(v, str):
+            v = v.strip()
+        if k == "r_constraint_name" and _is_sys_name(v):
+            v = "__SYS_NAMED__"
+        result[k] = v
+    return result
+
+
+def _compare_constraints(db: Session, task_id: int, schema: str,
+                         src_items: list[dict], tgt_items: list[dict]):
+    """
+    专用约束比较函数，解决迁移后 r_constraint_name（被引用主键约束名）
+    由 Oracle 自动重命名（SYS_C*）导致误报 mismatch 的问题。
+
+    规则：若源/目标的 r_constraint_name 都以 SYS_ 开头，视为等价，
+    只比较其余字段（table_name, constraint_type, status, validated 等）。
+    """
+    src_map = {item["constraint_name"]: item for item in src_items}
+    tgt_map = {item["constraint_name"]: item for item in tgt_items}
+    all_names = sorted(set(src_map) | set(tgt_map))
+    for name in all_names:
+        s, t = src_map.get(name), tgt_map.get(name)
+        if s and t:
+            s_clean = _normalize_constraint(s)
+            t_clean = _normalize_constraint(t)
+            status = "match" if s_clean == t_clean else "mismatch"
+            _save(db, task_id, schema, "CONSTRAINT", name, status,
+                  json.dumps(s_clean, default=str)[:2000],
+                  json.dumps(t_clean, default=str)[:2000])
+        elif s:
+            _save(db, task_id, schema, "CONSTRAINT", name, "source_only",
+                  src_val=json.dumps(s, default=str)[:2000])
+        else:
+            _save(db, task_id, schema, "CONSTRAINT", name, "target_only",
+                  tgt_val=json.dumps(t, default=str)[:2000])
+
+
 def _compare_schema_snapshot_vs_db(db: Session, task_id: int, schema: str,
                                     src_data: dict, tgt_conn):
     """Compare a single schema: snapshot (source) vs live DB (target)."""
@@ -219,7 +275,7 @@ def _compare_schema_snapshot_vs_db(db: Session, task_id: int, schema: str,
     # ── Constraints ──
     src_con = src_data.get("constraints", [])
     tgt_con_raw = _tgt_constraints(tgt_conn, schema)
-    _compare_simple_objects(db, task_id, schema, "CONSTRAINT", src_con, tgt_con_raw, "constraint_name")
+    _compare_constraints(db, task_id, schema, src_con, tgt_con_raw)
 
     # ── Indexes ──
     src_idx = src_data.get("indexes", [])
